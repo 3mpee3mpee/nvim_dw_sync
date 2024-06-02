@@ -42,7 +42,14 @@ function M.parse_config_file(root_dir)
 end
 
 function M.list_directories(path)
-  local dirs = scan.scan_dir(path, { only_dirs = true, depth = 1 })
+  local all_dirs = scan.scan_dir(path, { only_dirs = true, depth = 5 })
+  local dirs = {}
+
+  for _, dir in ipairs(all_dirs) do
+    if not dir:match("node_modules") then
+      table.insert(dirs, dir)
+    end
+  end
   return dirs
 end
 
@@ -55,98 +62,135 @@ function M.check_if_cartridge(project_file)
   return content:find("com.demandware.studio.core.beehiveNature") ~= nil
 end
 
-local function url_encode(str)
-  if str then
-    str = string.gsub(str, "\n", "\r\n")
-    str = string.gsub(str, "([^%w ])", function(c)
-      return string.format("%%%02X", string.byte(c))
-    end)
-    str = string.gsub(str, " ", "+")
+function M.clean_project(cartridge_name, cwd)
+  print("Executing clean_project function")
+  M.add_log("Cleaning project: " .. cartridge_name)
+
+  local config, err = M.parse_config_file(cwd)
+  if not config then
+    M.add_log("Error: " .. err)
+    return
   end
-  return str
-end
 
-function M.upload_cartridge(cartridge_path, config)
-  M.clear_logs()
-
-  local files = scan.scan_dir(cartridge_path, { hidden = true, depth = 10 })
-
-  -- local username = url_encode(config.username)
-  -- local password = url_encode(config.password)
-
-  local username = config.username
-  local password = config.password
-
-  -- Validate connection (dummy request to check connection)
-  local validate_url = string.format(
-    "https://%s/on/demandware.servlet/webdav/Sites/Cartridges/%s/",
+  local clean_url = string.format(
+    "https://%s/on/demandware.servlet/webdav/Sites/Cartridges/%s/%s/",
     config.hostname,
-    config["code-version"]
+    config["code-version"],
+    cartridge_name
   )
-
-  print(username, password)
-  M.add_log("Using config file: " .. Path:new(cartridge_path):absolute())
-  M.add_log("Hostname: " .. config.hostname)
-  M.add_log("Code version: " .. config["code-version"])
 
   Job:new({
     command = "curl",
     args = {
-      "-I",
-      validate_url,
+      "-X",
+      "DELETE",
+      clean_url,
       "-u",
-      username .. ":" .. password,
+      config.username .. ":" .. config.password,
     },
     on_exit = function(j, return_val)
       if return_val == 0 then
-        local result = j:result()
-        local status_code = tonumber(string.match(result[1], "%s(%d+)%s"))
-
-        if status_code == 200 then
-          M.add_log("Connection validated successfully")
-        else
-          M.add_log("Failed to validate connection: HTTP status " .. status_code)
-          M.add_log("Response: " .. table.concat(result, "\n"))
-          return
-        end
+        M.add_log("Project cleaned successfully")
       else
-        M.add_log("Failed to validate connection: " .. table.concat(j:stderr_result(), "\n"))
-        return
+        M.add_log("Failed to clean project: " .. table.concat(j:stderr_result(), "\n"))
       end
-
-      M.add_log("Start uploading cartridges")
-
-      for _, file in ipairs(files) do
-        local relative_path = Path:new(file):make_relative(cartridge_path)
-        local url = string.format(
-          "https://%s/on/demandware.servlet/webdav/Sites/Cartridges/%s/%s",
-          config.hostname,
-          config["code-version"],
-          relative_path
-        )
-
-        Job:new({
-          command = "curl",
-          args = {
-            "-T",
-            file,
-            url,
-            "-u",
-            username .. ":" .. password,
-          },
-          on_exit = function(job, exit_code)
-            if exit_code == 0 then
-              M.add_log("Uploaded: " .. relative_path)
-            else
-              M.add_log("Failed to upload: " .. relative_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
-            end
-          end,
-        }):start()
-      end
-
-      M.add_log("Cleanup code version")
     end,
   }):start()
+end
+
+function M.get_cartridge_list(config)
+  local username = config.username
+  local password = config.password
+  local cwd = vim.fn.getcwd()
+
+  local url = string.format(
+    "https://%s/on/demandware.servlet/webdav/Sites/Cartridges/%s/",
+    config.hostname,
+    config["code-version"]
+  )
+  local result = {}
+
+  Job:new({
+    command = "curl",
+    args = {
+      "-X",
+      "GET",
+      url,
+      "-u",
+      username .. ":" .. password,
+    },
+    on_stdout = function(_, data)
+      table.insert(result, data)
+    end,
+    on_exit = function(j, return_val)
+      if return_val == 0 then
+        local cartridges = {}
+
+        for _, line in ipairs(result) do
+          print(line)
+          local version, cartridge = string.match(
+            line,
+            '<a href="/on/demandware.servlet/webdav/Sites/Cartridges/([^/]*)/([^/]*)"><tt>([^<]+)</tt></a>'
+          )
+          if cartridge then
+            table.insert(cartridges, cartridge)
+          end
+        end
+
+        if cartridges and cartridges[1] then
+          print("Cartridges found:", table.concat(cartridges, "\n"))
+          for _, cartridge in ipairs(cartridges) do
+            M.clean_project(cartridge, cwd)
+          end
+          M.add_log("Cartridges found: " .. table.concat(cartridges, "\n"))
+        else
+          print("Failed to get cartridges list")
+          M.add_log("Failed to get cartridges list")
+        end
+      else
+        print("Failed to get cartridges list: " .. table.concat(j:stderr_result(), "\n"))
+        M.add_log("Failed to get cartridges list: " .. table.concat(j:stderr_result(), "\n"))
+      end
+    end,
+  }):start()
+end
+
+function M.upload_cartridge(cartridge_path, config)
+  local files = scan.scan_dir(cartridge_path, { hidden = true, depth = 10 })
+
+  local username = config.username
+  local password = config.password
+
+  for _, file in ipairs(files) do
+    local relative_path = Path:new(file):make_relative(cartridge_path)
+    local cartridge_name = string.match(cartridge_path, "([^/]+)$") -- Extract the cartridge name using Lua pattern matching
+    local upload_path = string.format("%s/%s", cartridge_name, relative_path)
+
+    local url = string.format(
+      "https://%s/on/demandware.servlet/webdav/Sites/Cartridges/%s/%s",
+      config.hostname,
+      config["code-version"],
+      upload_path
+    )
+
+    Job:new({
+      command = "curl",
+      args = {
+        "-T",
+        file,
+        url,
+        "-u",
+        username .. ":" .. password,
+      },
+      on_exit = function(job, exit_code)
+        if exit_code == 0 then
+          M.add_log("Uploaded: " .. upload_path)
+        else
+          M.add_log("Failed to upload: " .. upload_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
+        end
+      end,
+    }):start()
+  end
 end
 
 return M
