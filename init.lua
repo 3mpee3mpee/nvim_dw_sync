@@ -5,8 +5,7 @@ local pickers = require("telescope.pickers")
 local previewers = require("telescope.previewers")
 local sorters = require("telescope.config").values
 local file_utils = require("dw-sync.utils.file")
-local Job = require("plenary.job")
-local Path = require("plenary.path")
+local actions_utils = require("dw-sync.utils.actions")
 
 local M = {}
 
@@ -21,68 +20,24 @@ local function execute_action(prompt_bufnr)
     return
   end
 
+  if selection and selection.value == "Clean Project and Upload all" then
+    actions_utils.execute_clean_project_upload_all(config, cwd)
+  end
+
   if selection and selection.value == "Upload Cartridges" then
-    print("Upload Cartridges action triggered")
-
-    local cartridges = file_utils.list_directories(cwd)
-    local valid_cartridges = {}
-    for _, cartridge in ipairs(cartridges) do
-      if file_utils.check_if_cartridge(cartridge .. "/.project") then
-        table.insert(valid_cartridges, cartridge)
-      end
-    end
-
-    -- Validate connection (dummy request to check connection)
-    local validate_url = string.format(
-      "https://%s/on/demandware.servlet/webdav/Sites/Cartridges/%s/",
-      config.hostname,
-      config["code-version"]
-    )
-
-    Job:new({
-      command = "curl",
-      args = {
-        "-I",
-        validate_url,
-        "-u",
-        config.username .. ":" .. config.password,
-      },
-      on_exit = function(j, return_val)
-        if return_val == 0 then
-          local result = j:result()
-          local status_code = tonumber(string.match(result[1], "%s(%d+)%s"))
-
-          if status_code == 200 then
-            file_utils.add_log("Connection validated successfully")
-          else
-            file_utils.add_log("Failed to validate connection: HTTP status " .. status_code)
-            file_utils.add_log("Response: " .. table.concat(result, "\n"))
-            return
-          end
-        else
-          file_utils.add_log("Failed to validate connection: " .. table.concat(j:stderr_result(), "\n"))
-          return
-        end
-
-        file_utils.add_log("Start uploading cartridges")
-
-        file_utils.add_log("Cartridges to upload: " .. table.concat(valid_cartridges, "\n"))
-        file_utils.add_log("Using config file: " .. Path:new(cwd .. "/dw.json"):absolute())
-        file_utils.add_log("Hostname: " .. config.hostname)
-        file_utils.add_log("Code version: " .. config["code-version"])
-
-        for _, valid_cartridge in ipairs(valid_cartridges) do
-          file_utils.add_log("Uploading: " .. valid_cartridge)
-          file_utils.upload_cartridge(valid_cartridge, config)
-        end
-      end,
-    }):start()
+    actions_utils.execute_upload(config, cwd)
   end
 
   if selection and selection.value == "Clean Project" then
-    print("Clean Project triggered")
+    actions_utils.execute_clean_project(config)
+  end
 
-    file_utils.get_cartridge_list(config)
+  if selection and selection.value == "Enable Upload" then
+    actions_utils.execute_enable_upload(config)
+  end
+
+  if selection and selection.value == "Disable Upload" then
+    actions_utils.execute_disable_upload()
   end
 
   actions.close(prompt_bufnr)
@@ -112,8 +67,33 @@ local function log_previewer()
         results = { "No logs available." }
       end
 
+      local title_description = ""
+      local selection = action_state.get_selected_entry()
+
+      if selection and selection.value == "Clean Project and Upload all" then
+        title_description = "Clean Project and Upload all"
+      end
+      if selection and selection.value == "Upload Cartridges" then
+        title_description = "Upload Cartridges"
+      end
+      if selection and selection.value == "Clean Project" then
+        title_description = "Clean Project"
+      end
+      if selection and selection.value == "Enable Upload" then
+        title_description = "Enable Upload"
+      end
+      if selection and selection.value == "Disable Upload" then
+        title_description = "Disable Upload"
+      end
+
       -- Ensure each log entry is split into individual lines
       local formatted_results = {}
+
+      if title_description ~= "" then
+        table.insert(formatted_results, title_description)
+        table.insert(formatted_results, "---------------------------------------------------------------")
+      end
+
       for _, log_entry in ipairs(results) do
         for line in log_entry:gmatch("[^\r\n]+") do
           table.insert(formatted_results, line)
@@ -121,6 +101,8 @@ local function log_previewer()
       end
 
       vim.schedule(function()
+        -- Clear the buffer before setting new lines
+        vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, {})
         vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, formatted_results)
       end)
     end,
@@ -132,7 +114,13 @@ function M.open_telescope()
     .new({}, {
       prompt_title = "DW Sync",
       finder = finders.new_table({
-        results = { "Upload Cartridges", "Clean Project" },
+        results = {
+          "Clean Project and Upload all",
+          "Upload Cartridges",
+          "Clean Project",
+          "Enable Upload",
+          "Disable Upload",
+        },
       }),
       sorter = sorters.generic_sorter({}),
       previewer = log_previewer(),
