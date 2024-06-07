@@ -10,6 +10,7 @@ local logs = require("dw-sync.utils.logs")
 
 local M = {}
 
+-- Function to execute the selected action
 local function execute_action(prompt_bufnr)
   local selection = action_state.get_selected_entry()
   logs.clear_logs()
@@ -30,14 +31,16 @@ local function execute_action(prompt_bufnr)
       ["Disable Upload"] = actions_utils.execute_disable_upload,
     }
 
-    if action_map[selection.value] then
-      action_map[selection.value](config, cwd)
+    local action = action_map[selection.value]
+    if action then
+      action(config, cwd)
     end
   end
 
   actions.close(prompt_bufnr)
 end
 
+-- Setup function for telescope configuration
 function M.setup()
   require("telescope").setup({
     defaults = {
@@ -53,6 +56,7 @@ function M.setup()
   })
 end
 
+-- Function to preview logs
 local function log_previewer()
   return previewers.new_buffer_previewer({
     define_preview = function(self, entry, status)
@@ -74,6 +78,7 @@ local function log_previewer()
   })
 end
 
+-- Function to open telescope with custom configuration
 function M.open_telescope()
   pickers
     .new({}, {

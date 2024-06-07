@@ -2,11 +2,13 @@ local Path = require("plenary.path")
 local scan = require("plenary.scandir")
 local Job = require("plenary.job")
 local logs = require("dw-sync.utils.logs")
+
 local M = {}
 
 M.cartridges = {}
 M.watcher = nil
 
+-- Function to read a file
 function M.read_file(file_path)
   local path = Path:new(file_path)
   if not path:exists() then
@@ -15,6 +17,7 @@ function M.read_file(file_path)
   return path:read()
 end
 
+-- Function to parse the configuration file
 function M.parse_config_file(root_dir)
   local path = Path:new(root_dir .. "/dw.json")
   if not path:exists() then
@@ -30,6 +33,7 @@ function M.parse_config_file(root_dir)
   return config
 end
 
+-- Function to list directories
 function M.list_directories(path)
   local all_dirs = scan.scan_dir(path, { only_dirs = true, depth = 5 })
   local dirs = {}
@@ -42,6 +46,7 @@ function M.list_directories(path)
   return dirs
 end
 
+-- Function to check if a project is a cartridge
 function M.check_if_cartridge(project_file)
   local content, err = M.read_file(project_file)
   if not content then
@@ -51,6 +56,7 @@ function M.check_if_cartridge(project_file)
   return content:find("com.demandware.studio.core.beehiveNature") ~= nil
 end
 
+-- Function to clean a project
 function M.clean_project(cartridge_name, cwd)
   print("Executing clean_project function")
   logs.add_log("Cleaning project: " .. cartridge_name)
@@ -87,6 +93,7 @@ function M.clean_project(cartridge_name, cwd)
   }):start()
 end
 
+-- Function to get cartridge list and clean them
 function M.get_cartridge_list_and_clean(config)
   local username = config.username
   local password = config.password
@@ -142,9 +149,9 @@ function M.get_cartridge_list_and_clean(config)
   }):start()
 end
 
+-- Function to upload a cartridge
 function M.upload_cartridge(cartridge_path, config)
   local files = scan.scan_dir(cartridge_path, { hidden = true, depth = 10 })
-
   local username = config.username
   local password = config.password
 
@@ -180,17 +187,24 @@ function M.upload_cartridge(cartridge_path, config)
   end
 end
 
+-- Function to upload a file
 function M.upload_file(file_path, config)
   local cwd = vim.fn.getcwd()
   local relative_path = Path:new(file_path):make_relative(cwd)
   local c_name = nil
   local c_rel_path = nil
 
-  for i, c in ipairs(M.cartridges) do
+  for _, c in ipairs(M.cartridges) do
     c_rel_path = Path:new(c):make_relative(cwd)
-    if string.find(relative_path, c_rel_path) then
+    if string.find(relative_path, c_rel_path, 1, true) then
       c_name = c
+      break
     end
+  end
+
+  if not c_name then
+    logs.add_log("No matching cartridge found for: " .. file_path)
+    return
   end
 
   if c_name then
@@ -226,12 +240,13 @@ function M.upload_file(file_path, config)
   end
 end
 
+-- Function to delete a file
 function M.delete_file(file_path, config)
   local cwd = vim.fn.getcwd()
   local relative_path = Path:new(file_path):make_relative(cwd)
   local c_name = nil
   local c_rel_path = nil
-  for i, c in ipairs(M.cartridges) do
+  for _, c in ipairs(M.cartridges) do
     c_rel_path = Path:new(c):make_relative(cwd)
     if string.find(relative_path, c_rel_path) then
       c_name = c
@@ -271,6 +286,21 @@ function M.delete_file(file_path, config)
   end
 end
 
+-- Function to handle directory uploads recursively
+local function handle_dir(f_path, config)
+  logs.add_log("Handling directory: " .. f_path)
+  local files = scan.scan_dir(f_path, { hidden = true, depth = 10 })
+  for _, file in ipairs(files) do
+    local file_path_obj = Path:new(file)
+    if file_path_obj:is_dir() then
+      handle_dir(file, config)
+    else
+      M.upload_file(file, config)
+    end
+  end
+end
+
+-- Function to start the watcher
 function M.start_watcher(config)
   if M.watcher then
     logs.add_log("Watcher is already running")
@@ -294,25 +324,12 @@ function M.start_watcher(config)
         logs.add_log("File changed: " .. fname)
 
         if file_path:exists() then
-          local function handle_dir(f_path)
-            logs.add_log("Handling directory: " .. f_path)
-
-            local files = scan.scan_dir(f_path, { hidden = true, depth = 10 })
-            for _, file in ipairs(files) do
-              local file_path_obj = Path:new(file)
-              if file_path_obj:is_dir() then
-                handle_dir(file)
-              else
-                M.upload_file(file, config)
-              end
-            end
-          end
-
           if file_path:is_dir() then
             logs.add_log("Path is a directory: " .. fname)
-            handle_dir(fname)
+            handle_dir(fname, config)
           else
             logs.add_log("Path is a file: " .. fname)
+            print("Uploading file: " .. fname)
             M.upload_file(fname, config)
           end
         else
@@ -324,6 +341,7 @@ function M.start_watcher(config)
   )
 end
 
+-- Function to update the cartridge list
 function M.update_cartridge_list(cwd)
   local cartridges = M.list_directories(cwd)
   local valid_cartridges = {}
@@ -341,6 +359,7 @@ function M.update_cartridge_list(cwd)
   return valid_cartridges
 end
 
+-- Function to stop the watcher
 function M.stop_watcher()
   if M.watcher then
     M.watcher:stop()
