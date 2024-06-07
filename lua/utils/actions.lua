@@ -1,7 +1,7 @@
-local file_utils = require("dw-sync.utils.file")
+local file_utils = require("nvim-dw-sync.utils.file")
 local Job = require("plenary.job")
 local Path = require("plenary.path")
-local logs = require("dw-sync.utils.logs")
+local logs = require("nvim-dw-sync.utils.logs")
 
 local M = {}
 

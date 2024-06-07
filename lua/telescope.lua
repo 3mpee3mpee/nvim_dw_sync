@@ -4,9 +4,9 @@ local finders = require("telescope.finders")
 local pickers = require("telescope.pickers")
 local previewers = require("telescope.previewers")
 local sorters = require("telescope.config").values
-local file_utils = require("dw-sync.utils.file")
-local actions_utils = require("dw-sync.utils.actions")
-local logs = require("dw-sync.utils.logs")
+local file_utils = require("nvim-dw-sync.utils.file")
+local actions_utils = require("nvim-dw-sync.utils.actions")
+local logs = require("nvim-dw-sync.utils.logs")
 
 local M = {}
 

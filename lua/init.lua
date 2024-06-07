@@ -1,4 +1,4 @@
-local telescope = require("dw-sync.telescope")
+local telescope = require("nvim-dw-sync.telescope")
 
 local M = {}
 
