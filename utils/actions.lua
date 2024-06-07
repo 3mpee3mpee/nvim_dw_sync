@@ -1,6 +1,7 @@
 local file_utils = require("dw-sync.utils.file")
 local Job = require("plenary.job")
 local Path = require("plenary.path")
+local logs = require("dw-sync.utils.logs")
 
 local M = {}
 
@@ -17,7 +18,7 @@ function M.execute_upload(config, cwd)
   )
 
   if #valid_cartridges == 0 then
-    file_utils.add_log("No cartridges to upload")
+    logs.add_log("No cartridges to upload")
     return
   end
 
@@ -35,26 +36,26 @@ function M.execute_upload(config, cwd)
         local status_code = tonumber(string.match(result[1], "%s(%d+)%s"))
 
         if status_code == 200 then
-          file_utils.add_log("Connection validated successfully")
+          logs.add_log("Connection validated successfully")
         else
-          file_utils.add_log("Failed to validate connection: HTTP status " .. status_code)
-          file_utils.add_log("Response: " .. table.concat(result, "\n"))
+          logs.add_log("Failed to validate connection: HTTP status " .. status_code)
+          logs.add_log("Response: " .. table.concat(result, "\n"))
           return
         end
       else
-        file_utils.add_log("Failed to validate connection: " .. table.concat(j:stderr_result(), "\n"))
+        logs.add_log("Failed to validate connection: " .. table.concat(j:stderr_result(), "\n"))
         return
       end
 
-      file_utils.add_log("Start uploading cartridges")
+      logs.add_log("Start uploading cartridges")
 
-      file_utils.add_log("Cartridges to upload: " .. table.concat(valid_cartridges, "\n"))
-      file_utils.add_log("Using config file: " .. Path:new(cwd .. "/dw.json"):absolute())
-      file_utils.add_log("Hostname: " .. config.hostname)
-      file_utils.add_log("Code version: " .. config["code-version"])
+      logs.add_log("Cartridges to upload: " .. table.concat(valid_cartridges, "\n"))
+      logs.add_log("Using config file: " .. Path:new(cwd .. "/dw.json"):absolute())
+      logs.add_log("Hostname: " .. config.hostname)
+      logs.add_log("Code version: " .. config["code-version"])
 
       for _, valid_cartridge in ipairs(valid_cartridges) do
-        file_utils.add_log("Uploading: " .. valid_cartridge)
+        logs.add_log("Uploading: " .. valid_cartridge)
         file_utils.upload_cartridge(valid_cartridge, config)
       end
     end,

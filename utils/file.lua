@@ -1,24 +1,11 @@
 local Path = require("plenary.path")
 local scan = require("plenary.scandir")
 local Job = require("plenary.job")
+local logs = require("dw-sync.utils.logs")
 local M = {}
 
-M.logs = {}
 M.cartridges = {}
 M.watcher = nil
-
-function M.add_log(message)
-  table.insert(M.logs, message)
-  print("Log added:", message) -- Debug line
-end
-
-function M.get_logs()
-  return M.logs
-end
-
-function M.clear_logs()
-  M.logs = {}
-end
 
 function M.read_file(file_path)
   local path = Path:new(file_path)
@@ -66,11 +53,11 @@ end
 
 function M.clean_project(cartridge_name, cwd)
   print("Executing clean_project function")
-  M.add_log("Cleaning project: " .. cartridge_name)
+  logs.add_log("Cleaning project: " .. cartridge_name)
 
   local config, err = M.parse_config_file(cwd)
   if not config then
-    M.add_log("Error: " .. err)
+    logs.add_log("Error: " .. err)
     return
   end
 
@@ -92,9 +79,9 @@ function M.clean_project(cartridge_name, cwd)
     },
     on_exit = function(j, return_val)
       if return_val == 0 then
-        M.add_log("Project cleaned successfully")
+        logs.add_log("Project cleaned successfully")
       else
-        M.add_log("Failed to clean project: " .. table.concat(j:stderr_result(), "\n"))
+        logs.add_log("Failed to clean project: " .. table.concat(j:stderr_result(), "\n"))
       end
     end,
   }):start()
@@ -129,7 +116,6 @@ function M.get_cartridge_list_and_clean(config)
         local cartridges = {}
 
         for _, line in ipairs(result) do
-          print(line)
           local version, cartridge = string.match(
             line,
             '<a href="/on/demandware.servlet/webdav/Sites/Cartridges/([^/]*)/([^/]*)"><tt>([^<]+)</tt></a>'
@@ -140,18 +126,17 @@ function M.get_cartridge_list_and_clean(config)
         end
 
         if cartridges and cartridges[1] then
-          print("Cartridges found:", table.concat(cartridges, "\n"))
           for _, cartridge in ipairs(cartridges) do
             M.clean_project(cartridge, cwd)
           end
-          M.add_log("Cartridges found: " .. table.concat(cartridges, "\n"))
+          logs.add_log("Cartridges found: " .. table.concat(cartridges, "\n"))
         else
           print("Failed to get cartridges list")
-          M.add_log("Failed to get cartridges list")
+          logs.add_log("Failed to get cartridges list")
         end
       else
         print("Failed to get cartridges list: " .. table.concat(j:stderr_result(), "\n"))
-        M.add_log("Failed to get cartridges list: " .. table.concat(j:stderr_result(), "\n"))
+        logs.add_log("Failed to get cartridges list: " .. table.concat(j:stderr_result(), "\n"))
       end
     end,
   }):start()
@@ -186,24 +171,13 @@ function M.upload_cartridge(cartridge_path, config)
       },
       on_exit = function(job, exit_code)
         if exit_code == 0 then
-          M.add_log("Uploaded: " .. upload_path)
+          logs.add_log("Uploaded: " .. upload_path)
         else
-          M.add_log("Failed to upload: " .. upload_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
+          logs.add_log("Failed to upload: " .. upload_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
         end
       end,
     }):start()
   end
-end
-
-local function str_split(inputstr, sep)
-  if sep == nil then
-    sep = "%s"
-  end
-  local t = {}
-  for str in string.gmatch(inputstr, "([^" .. sep .. "]+)") do
-    table.insert(t, str)
-  end
-  return t
 end
 
 function M.upload_file(file_path, config)
@@ -211,11 +185,9 @@ function M.upload_file(file_path, config)
   local relative_path = Path:new(file_path):make_relative(cwd)
   local c_name = nil
   local c_rel_path = nil
-  print(relative_path .. "Relative path") -- Debug line
 
   for i, c in ipairs(M.cartridges) do
-    c_rel_path = Path:new(c):make_relative(cwd) -- Debug line
-    print(c_rel_path .. "Cartridge relative path") -- Debug line
+    c_rel_path = Path:new(c):make_relative(cwd)
     if string.find(relative_path, c_rel_path) then
       c_name = c
     end
@@ -245,9 +217,9 @@ function M.upload_file(file_path, config)
       },
       on_exit = function(job, exit_code)
         if exit_code == 0 then
-          M.add_log("Uploaded: " .. upload_path)
+          logs.add_log("Uploaded: " .. upload_path)
         else
-          M.add_log("Failed to upload: " .. upload_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
+          logs.add_log("Failed to upload: " .. upload_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
         end
       end,
     }):start()
@@ -259,19 +231,14 @@ function M.delete_file(file_path, config)
   local relative_path = Path:new(file_path):make_relative(cwd)
   local c_name = nil
   local c_rel_path = nil
-  print(relative_path .. ": dassdRelative path") -- Debug line
-
   for i, c in ipairs(M.cartridges) do
-    c_rel_path = Path:new(c):make_relative(cwd) -- Debug line
-    print(c_rel_path .. ": aartridge relative path") -- Debug line
+    c_rel_path = Path:new(c):make_relative(cwd)
     if string.find(relative_path, c_rel_path) then
       c_name = c
     end
   end
 
-  print(11111)
   if c_name then
-    print(222222)
     local cartridge_name = string.match(c_name, "([^/]+)$") -- Extract the cartridge name using Lua pattern matching
     local rp = Path:new(file_path):make_relative(c_name)
     local c_rel_index = string.find(rp, cartridge_name, 1, true)
@@ -295,9 +262,9 @@ function M.delete_file(file_path, config)
       },
       on_exit = function(job, exit_code)
         if exit_code == 0 then
-          M.add_log("Deleted: " .. delete_path)
+          logs.add_log("Deleted: " .. delete_path)
         else
-          M.add_log("Failed to delete: " .. delete_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
+          logs.add_log("Failed to delete: " .. delete_path .. "\n" .. table.concat(job:stderr_result(), "\n"))
         end
       end,
     }):start()
@@ -306,7 +273,7 @@ end
 
 function M.start_watcher(config)
   if M.watcher then
-    M.add_log("Watcher is already running")
+    logs.add_log("Watcher is already running")
     return
   end
 
@@ -318,19 +285,17 @@ function M.start_watcher(config)
     { recursive = true },
     vim.schedule_wrap(function(err, fname, status)
       if err then
-        M.add_log("Error in watcher: " .. err)
+        logs.add_log("Error in watcher: " .. err)
         return
       end
 
       if fname then
         local file_path = Path:new(fname)
-        M.add_log("File changed: " .. fname)
-        print("File changed: " .. fname) -- Debug line
+        logs.add_log("File changed: " .. fname)
 
         if file_path:exists() then
           local function handle_dir(f_path)
-            M.add_log("Handling directory: " .. f_path)
-            print("Handling directory: " .. f_path) -- Debug line
+            logs.add_log("Handling directory: " .. f_path)
 
             local files = scan.scan_dir(f_path, { hidden = true, depth = 10 })
             for _, file in ipairs(files) do
@@ -344,17 +309,14 @@ function M.start_watcher(config)
           end
 
           if file_path:is_dir() then
-            M.add_log("Path is a directory: " .. fname)
-            print("Path is a directory: " .. fname) -- Debug line
+            logs.add_log("Path is a directory: " .. fname)
             handle_dir(fname)
           else
-            M.add_log("Path is a file: " .. fname)
-            print("Path is a file: " .. fname) -- Debug line
+            logs.add_log("Path is a file: " .. fname)
             M.upload_file(fname, config)
           end
         else
-          M.add_log("File does not exist: " .. fname)
-          print("File does not exist: " .. fname) -- Debug line
+          logs.add_log("File does not exist: " .. fname)
           M.delete_file(fname, config)
         end
       end
@@ -367,13 +329,12 @@ function M.update_cartridge_list(cwd)
   local valid_cartridges = {}
   for _, cartridge in ipairs(cartridges) do
     if M.check_if_cartridge(cartridge .. "/.project") then
-      print(cartridge .. ": HELLO WORLD")
       table.insert(valid_cartridges, cartridge)
     end
   end
 
   if #valid_cartridges == 0 then
-    M.add_log("No cartridges found")
+    logs.add_log("No cartridges found")
     return
   end
   M.cartridges = valid_cartridges
@@ -384,8 +345,8 @@ function M.stop_watcher()
   if M.watcher then
     M.watcher:stop()
     M.watcher = nil
-    print("Watcher stopped") -- Debug line
-    M.add_log("Watcher stopped")
+    print("Watcher stopped")
+    logs.add_log("Watcher stopped")
   end
 end
 
