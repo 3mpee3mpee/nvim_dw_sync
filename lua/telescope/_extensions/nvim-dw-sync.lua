@@ -1,4 +1,4 @@
-local nvim_dw_sync = require("nvim-dw-sync")
+local nvim_dw_sync = require("nvim_dw_sync")
 
 return require("telescope").register_extension({
   exports = {
