@@ -1,11 +1,10 @@
 local telescope = require("nvim-dw-sync.utils.telescope")
-local commands = require("nvim-dw-sync.utils.commands")
 
 local M = {}
 
-function M.setup()
+function M.setup(config)
   telescope.setup()
-  commands.setup()
+  M.config = config
 end
 
 return M
