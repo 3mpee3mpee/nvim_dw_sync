@@ -1,7 +1,7 @@
 local Path = require("plenary.path")
 local scan = require("plenary.scandir")
 local Job = require("plenary.job")
-local logs = require("dw-sync.utils.logs")
+local logs = require("nvim-dw-sync.utils.logs")
 
 local M = {}
 
